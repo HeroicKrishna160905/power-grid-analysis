@@ -17,6 +17,9 @@ numpy==1.26.4
 scipy==1.13.1
 pandapower==3.1.0
 
+# Pinned rich to a version compatible with streamlit 1.35.0 to resolve conflict.
+rich==13.7.1
+
 # --- Interactive Dashboard ---
 # For the web-based user interface
 streamlit==1.35.0
