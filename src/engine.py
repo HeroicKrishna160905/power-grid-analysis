@@ -1,11 +1,13 @@
- #src/engine.py
+# src/engine.py
 """
 Core engine for loading cases and running AC power flow.
-Includes diagnostic tools for debugging convergence issues.
+Includes "brute force" diagnostic tools that write directly to the
+system error stream to guarantee visibility in logs.
 """
 import pandapower as pp
 import pandapower.networks as pn
 import pandas as pd
+import sys # Import the system library
 
 def load_case(case_name: str = "case_ieee30"):
     """
@@ -17,42 +19,46 @@ def load_case(case_name: str = "case_ieee30"):
 
 def run_powerflow(net, init="dc"):
     """
-    Runs an AC power flow (pp.runpp) with safe error handling and result validation.
-    Includes a diagnostic mode to debug convergence failures.
+    Runs an AC power flow (pp.runpp) and forces diagnostic output to the
+    system error log on failure.
     """
+    # Tell pandapower to NOT raise an error. We will check for convergence manually.
+    # This guarantees our diagnostic code will run.
     try:
-        # First, try to run with the robust settings
-        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, init=init)
-    except pp.LoadflowNotConverged as e:
-        # --- NEW: DIAGNOSTIC MODE ---
-        # If it fails, print a detailed report to the terminal and then raise the error.
-        print("\n" + "="*50)
-        print(" POWER FLOW FAILED TO CONVERGE. DIAGNOSTIC REPORT:")
-        print("="*50)
-        print(f"Error Details: {e}")
+        # We explicitly disable numba to prevent warnings that clutter the log.
+        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, init=init, numba=False)
+        converged = net["converged"]
+    except Exception as e:
+        # Catch any other unexpected errors during the run
+        print(f"A critical pandapower error occurred before convergence check: {e}", file=sys.stderr)
+        converged = False
+
+    if not converged:
+        # --- THIS IS THE GUARANTEED DIAGNOSTIC SECTION ---
+        # We write directly to sys.stderr, which will show up in Streamlit logs.
+        print("\n" + "="*50, file=sys.stderr)
+        print(" POWER FLOW FAILED TO CONVERGE. DIAGNOSTIC REPORT:", file=sys.stderr)
+        print("="*50, file=sys.stderr)
         
-        # Check if there are any results at all to display
         if net.res_bus.empty:
-            print("No results available. The solver failed at an early stage.")
+            print("No results available. The solver failed at a very early stage.", file=sys.stderr)
         else:
-            # Print the bus voltages from the last unconverged iteration
-            print("\n--- Bus Voltages at Last Iteration ---")
-            pd.set_option('display.max_rows', 150) # Ensure all buses are shown
-            print(net.res_bus[['vm_pu', 'va_degree']])
+            print("\n--- Bus Voltages at Last Unconverged Iteration ---", file=sys.stderr)
+            pd.set_option('display.max_rows', 150) # Ensure we can see all buses
+            print(net.res_bus[['vm_pu', 'va_degree']].to_string(), file=sys.stderr)
             
-            # Highlight buses with extreme voltage issues
             extreme_voltages = net.res_bus[(net.res_bus.vm_pu < 0.8) | (net.res_bus.vm_pu > 1.2)]
             if not extreme_voltages.empty:
-                print("\n--- CRITICAL VOLTAGE ISSUES DETECTED AT: ---")
-                print(extreme_voltages[['vm_pu']])
+                print("\n--- CRITICAL VOLTAGE ISSUES DETECTED AT: ---", file=sys.stderr)
+                print(extreme_voltages[['vm_pu']].to_string(), file=sys.stderr)
         
-        print("="*50)
-        print(" END OF DIAGNOSTIC REPORT")
-        print("="*50 + "\n")
+        print("="*50, file=sys.stderr)
+        print(" END OF DIAGNOSTIC REPORT", file=sys.stderr)
+        print("="*50 + "\n", file=sys.stderr)
+        sys.stderr.flush() # Force the buffer to write to the log immediately
 
-        # Re-raise the exception to stop the Streamlit app and show the error.
-        # The useful information is now in your terminal.
-        raise e
+        # Return the failure signal to the Streamlit app
+        return False, {"error": "Power flow did not converge. Detailed report is in the application log."}
 
     # If successful, proceed as normal
     v_min, v_max = 0.95, 1.05
