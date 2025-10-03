@@ -1,4 +1,4 @@
-# app.py (Final Version)
+# app.py (Final Version with Correct Case Names)
 import streamlit as st
 import pandas as pd
 import pandapower as pp
@@ -11,7 +11,8 @@ st.title("⚡ Power Grid Analysis Engine")
 
 # --- Sidebar Controls ---
 st.sidebar.header("Configuration")
-case_options = {"IEEE 30-Bus": "case_ieee30", "IEEE 118-Bus": "case_ieee118"}
+# --- FIX IS HERE: Using the correct pandapower function names ---
+case_options = {"IEEE 30-Bus": "case30", "IEEE 118-Bus": "case118"}
 selected_case_name = st.sidebar.selectbox("Select Grid Model", options=list(case_options.keys()))
 case_name = case_options[selected_case_name]
 
@@ -25,8 +26,7 @@ def run_full_analysis(case):
     
     # --- Engineering Fix ---
     # Apply a refined fix only to the specific case that needs it.
-    if case == "case_ieee30":
-        # Add a 20 MVAr capacitor bank to provide voltage support without crashing the base case.
+    if case == "case30":
         pp.create_shunt(net, bus=29, q_mvar=20, name="Capacitor Bank at Bus 29")
 
     # 2. Base Power Flow
@@ -35,14 +35,15 @@ def run_full_analysis(case):
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details")}
 
     # 3. Optimal Power Flow
-    opf_net = load_case(case) # Use a fresh copy for OPF
+    # Note: Using a fresh copy for OPF so it doesn't have the shunt fix
+    opf_net = load_case(case) 
     costs = {('gen', i): (i + 1) * 10 for i in opf_net.gen.index}
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
     if not opf_success:
         return {"error": "Optimal Power Flow Failed"}
 
-    # 4. Contingency Analysis
+    # 4. Contingency Analysis (run on the reinforced network)
     contingency_df = run_n1_contingency_analysis(pf_results['net'])
 
     return {
@@ -81,7 +82,14 @@ if run_button:
                 value=f"{opf_results['summary']['losses_mw']:.2f} MW",
                 help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
             )
-        loss_reduction = (pf_results['summary']['losses_mw'] - opf_results['summary']['losses_mw']) / pf_results['summary']['losses_mw'] * 100
+        
+        # Prevent division by zero if base losses are zero
+        base_losses = pf_results['summary']['losses_mw']
+        if base_losses > 0:
+            loss_reduction = (base_losses - opf_results['summary']['losses_mw']) / base_losses * 100
+        else:
+            loss_reduction = 0
+
         with col3:
             st.metric(
                 label="Loss Reduction via OPF",
@@ -108,5 +116,4 @@ if run_button:
             st.dataframe(analysis_data["contingency_df"])
 else:
     st.info("Select a grid model and click 'Run Analysis' to begin.")
-
 
