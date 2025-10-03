@@ -55,7 +55,7 @@ if run_button:
         st.success("Analysis Complete!")
         
         pf_results = analysis_data["pf_results"]
-        opf_results = analysis_a_data["opf_results"]
+        opf_results = analysis_data["opf_results"]
         
         # --- Display KPIs ---
         st.header("Key Performance Indicators (KPIs)")
