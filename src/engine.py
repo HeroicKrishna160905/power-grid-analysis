@@ -1,25 +1,47 @@
- #src/engine.py (Simplified Version)
+# src/engine.py (Final Version)
 import pandapower as pp
 import pandapower.networks as pn
+import pandas as pd
 
 def load_case(case_name: str = "case_ieee30"):
     """Loads a standard pandapower network case by name."""
+    if not hasattr(pn, case_name):
+        raise ValueError(f"Unknown case: {case_name}. Please use a valid pandapower.networks case.")
     return getattr(pn, case_name)()
 
 def run_powerflow(net):
     """
-    Runs a basic AC power flow and returns the result.
-    No complex error handling for this diagnostic test.
+    Runs an AC power flow (pp.runpp) with safe error handling and result validation.
     """
     try:
-        pp.runpp(net, init="dc", numba=False)
-        if net["converged"]:
-            return True, {"bus_results": net.res_bus}
-        else:
-            # This will only be reached if pp.runpp completes but doesn't converge.
-            return False, {"error": "Solver finished but did not converge."}
+        # Use a more stable solver initialization and disable numba for broader compatibility.
+        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, init="dc", numba=False)
+        
+        # Basic validation summary
+        v_min, v_max = 0.95, 1.05
+        bus_v = net.res_bus['vm_pu']
+        line_loading = net.res_line['loading_percent']
+        
+        violations = {
+            "voltage_violations": int(((bus_v < v_min) | (bus_v > v_max)).sum()),
+            "overloaded_lines": int((line_loading > 100).sum())
+        }
+        
+        results = {
+            "net": net,
+            "bus_results": net.res_bus,
+            "line_results": net.res_line,
+            "violations": violations,
+            "summary": {
+                "total_load_mw": net.load.p_mw.sum(),
+                "total_gen_mw": net.res_gen.p_mw.sum(),
+                "losses_mw": net.res_line.pl_mw.sum(),
+                "loss_percent": net.res_line.pl_mw.sum() / net.res_gen.p_mw.sum() * 100 if net.res_gen.p_mw.sum() != 0 else 0
+            }
+        }
+        return True, results
+    except pp.LoadflowNotConverged as e:
+        return False, {"error": "Power flow did not converge.", "details": str(e)}
     except Exception as e:
-        # This will be reached if pp.runpp itself throws a Python-level error.
-        return False, {"error": f"An exception occurred inside pandapower: {e}"}
-
+        return False, {"error": "An unexpected error occurred during power flow.", "details": str(e)}
 
