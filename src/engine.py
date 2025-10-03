@@ -9,33 +9,19 @@ import pandas as pd
 def load_case(case_name: str = "case_ieee30"):
     """
     Loads a standard pandapower network case by name.
-
-    Args:
-        case_name (str): The name of the case to load (e.g., 'case_ieee30').
-
-    Returns:
-        pandapowerNet: The loaded pandapower network object.
     """
     if not hasattr(pn, case_name):
         raise ValueError(f"Unknown case: {case_name}. Please use a valid pandapower.networks case.")
     return getattr(pn, case_name)()
 
-def run_powerflow(net):
+def run_powerflow(net, init="dc"): # <-- ADD init="dc" as the default
     """
     Runs an AC power flow (pp.runpp) with safe error handling and result validation.
-
-    Args:
-        net (pandapowerNet): The pandapower network to analyze.
-
-    Returns:
-        tuple[bool, dict]: A tuple containing:
-                           - success (bool): True if the power flow converged, False otherwise.
-                           - results (dict): A dictionary with results or an error message.
     """
     try:
-        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True)
+        # Use the 'init' parameter for a more stable calculation
+        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, init=init)
         
-        # Summarize violations
         v_min, v_max = 0.95, 1.05
         bus_v = net.res_bus['vm_pu']
         line_loading = net.res_line['loading_percent']
