@@ -1,6 +1,7 @@
 # app.py
 import streamlit as st
 import pandas as pd
+import pandapower as pp
 from src.engine import load_case, run_powerflow
 from src.opf import define_generator_costs, run_opf
 from src.contingency import run_n1_contingency_analysis
@@ -21,21 +22,31 @@ run_button = st.sidebar.button("▶️ Run Analysis", type="primary")
 def run_full_analysis(case):
     # 1. Load network
     net = load_case(case)
-    
-    # 2. Base Power Flow
+
+    # --- ENGINEERING FIXES TO IMPROVE GRID STABILITY ---
+    # The standard IEEE test cases are often not N-1 secure. We can add
+    # reinforcements here to solve contingency violations and demonstrate
+    # the impact of grid improvements.
+    if case == "case_ieee30":
+        # Add a shunt capacitor to a weak bus (e.g., Bus 29) to provide
+        # reactive power support and prevent voltage collapse during contingencies.
+        pp.create_shunt(net, bus=29, q_mvar=50, name="Capacitor Bank at Bus 29")
+    # --- All subsequent analyses will now run on this *reinforced* network ---
+
+    # 2. Base Power Flow on the reinforced network
     pf_success, pf_results = run_powerflow(net)
     if not pf_success:
-        return {"error": "Base Power Flow Failed"}
+        return {"error": "Base Power Flow Failed on the reinforced network."}
 
-    # 3. Optimal Power Flow
-    opf_net = load_case(case) # Use a fresh copy for OPF
+    # 3. Optimal Power Flow on a copy of the reinforced network
+    opf_net = net.copy() # Use a copy to keep base case results clean
     costs = {('gen', i): (i + 1) * 10 for i in opf_net.gen.index} # Example costs
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
     if not opf_success:
-        return {"error": "Optimal Power Flow Failed"}
+        return {"error": "Optimal Power Flow Failed on the reinforced network."}
 
-    # 4. Contingency Analysis
+    # 4. Contingency Analysis on the reinforced network
     contingency_df = run_n1_contingency_analysis(pf_results['net'])
 
     return {
@@ -72,7 +83,14 @@ if run_button:
                 value=f"{opf_results['summary']['losses_mw']:.2f} MW",
                 help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
             )
-        loss_reduction = (pf_results['summary']['losses_mw'] - opf_results['summary']['losses_mw']) / pf_results['summary']['losses_mw'] * 100
+        
+        # Avoid division by zero if losses are zero
+        initial_losses = pf_results['summary']['losses_mw']
+        if initial_losses > 0:
+            loss_reduction = (initial_losses - opf_results['summary']['losses_mw']) / initial_losses * 100
+        else:
+            loss_reduction = 0
+
         with col3:
             st.metric(
                 label="Loss Reduction via OPF",
