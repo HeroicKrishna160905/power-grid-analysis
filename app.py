@@ -1,4 +1,4 @@
-# app.py (Final Version with Defensive Workaround for Cache Bug)
+# app.py (Final Version with Direct DataFrame Manipulation)
 import streamlit as st
 import pandas as pd
 import pandapower as pp
@@ -24,15 +24,15 @@ def run_full_analysis(case):
     # 1. Load network
     net = load_case(case)
     
-    # --- DEFENSIVE WORKAROUND for stubborn Streamlit Cloud cache issue ---
-    # Manually create the missing table if it doesn't exist. This makes
-    # the code resilient to the buggy pandapower version on the server.
-    if not hasattr(net, "shunt_characteristic_table"):
-        net.shunt_characteristic_table = pd.DataFrame(columns=[])
-
-    # --- Engineering Fix (now safe to run) ---
+    # --- Engineering Fix ---
     if case == "case30":
-        pp.create_shunt(net, bus=29, q_mvar=20, name="Capacitor Bank at Bus 29")
+        # --- ROBUST WORKAROUND: Bypass the buggy pp.create_shunt() function ---
+        # Manually add a new row to the net.shunt DataFrame. This is a more
+        # direct method that is not affected by the server's environment bug.
+        new_shunt_data = pd.DataFrame([
+            {'bus': 29, 'q_mvar': 20, 'in_service': True, 'name': "Capacitor Bank at Bus 29"}
+        ])
+        net.shunt = pd.concat([net.shunt, new_shunt_data], ignore_index=True)
 
     # 2. Base Power Flow on the reinforced network
     pf_success, pf_results = run_powerflow(net)
@@ -84,7 +84,7 @@ if run_button:
             st.metric(
                 label="System Losses (OPF Case)", 
                 value=f"{opf_results['summary']['losses_mw']:.2f} MW",
-                help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
+                help=f"{pf_results['summary']['loss_percent']:.2f}% of total generation"
             )
         
         base_losses = pf_results['summary']['losses_mw']
