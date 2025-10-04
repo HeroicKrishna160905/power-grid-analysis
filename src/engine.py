@@ -18,10 +18,10 @@ def run_powerflow(net, **kwargs):
     Accepts additional keyword arguments to pass to pp.runpp.
     """
     try:
-        # Use a more robust solver ('iwamoto_nr') for difficult-to-solve networks
-        # and a slightly looser tolerance to aid convergence.
+        # Use the highly robust but slower Gauss-Seidel ('gs') algorithm for convergence.
+        # This is a last resort for very difficult-to-solve networks.
         pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, init="dc", 
-                 algorithm='iwamoto_nr', tolerance_mva=1e-5, **kwargs)
+                 algorithm='gs', **kwargs)
         
         # Summarize violations
         v_min, v_max = 0.95, 1.05
@@ -53,3 +53,4 @@ def run_powerflow(net, **kwargs):
         return False, {"error": "Power flow did not converge.", "details": str(e)}
     except Exception as e:
         return False, {"error": "An unexpected error occurred during power flow.", "details": str(e)}
+
