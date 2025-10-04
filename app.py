@@ -45,8 +45,20 @@ def run_full_analysis(case):
     # 3. Optimal Power Flow
     # Use a deepcopy to ensure OPF runs on the same reinforced network
     opf_net = net.copy()
-    # Set all generator costs to 1 to prioritize minimizing system losses
-    costs = {('gen', i): 1 for i in opf_net.gen.index}
+    
+    # Set costs for all types of generation to prioritize minimizing system losses.
+    # This is more robust and works for cases that may not have a 'gen' table.
+    costs = {}
+    if hasattr(opf_net, 'gen') and not opf_net.gen.empty:
+        for i in opf_net.gen.index:
+            costs[('gen', i)] = 1
+    if hasattr(opf_net, 'ext_grid') and not opf_net.ext_grid.empty:
+        for i in opf_net.ext_grid.index:
+            costs[('ext_grid', i)] = 1
+    if hasattr(opf_net, 'sgen') and not opf_net.sgen.empty:
+        for i in opf_net.sgen.index:
+            costs[('sgen', i)] = 1
+            
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
     if not opf_success:
@@ -87,7 +99,7 @@ if run_button:
             st.metric(
                 label="System Losses (OPF Case)", 
                 value=f"{opf_results['summary']['losses_mw']:.2f} MW",
-                help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
+                help=f"{pf_results['summary']['loss_percent']:.2f}% of total generation"
             )
         
         loss_reduction = 0
@@ -114,7 +126,7 @@ if run_button:
             st.subheader("Generator Dispatch (MW)")
             st.dataframe(opf_results["gen_dispatch"][['p_mw', 'q_mvar']])
             st.subheader("Line Loading after OPF (%)")
-            st.bar_chart(opf_results["line_results"], y="loading_percent")
+            st.bar_chart(pf_results["line_results"], y="loading_percent")
 
         with tab3:
             st.dataframe(analysis_data["contingency_df"])
