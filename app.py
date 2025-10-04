@@ -1,7 +1,8 @@
-# app.py (Final Version with Correct Case Names)
+# app.py (Final Version with Correct Comparison Logic)
 import streamlit as st
 import pandas as pd
 import pandapower as pp
+from copy import deepcopy
 from src.engine import load_case, run_powerflow
 from src.opf import define_generator_costs, run_opf
 from src.contingency import run_n1_contingency_analysis
@@ -11,7 +12,6 @@ st.title("⚡ Power Grid Analysis Engine")
 
 # --- Sidebar Controls ---
 st.sidebar.header("Configuration")
-# --- FIX IS HERE: Using the correct pandapower function names ---
 case_options = {"IEEE 30-Bus": "case30", "IEEE 118-Bus": "case118"}
 selected_case_name = st.sidebar.selectbox("Select Grid Model", options=list(case_options.keys()))
 case_name = case_options[selected_case_name]
@@ -25,18 +25,17 @@ def run_full_analysis(case):
     net = load_case(case)
     
     # --- Engineering Fix ---
-    # Apply a refined fix only to the specific case that needs it.
     if case == "case30":
         pp.create_shunt(net, bus=29, q_mvar=20, name="Capacitor Bank at Bus 29")
 
-    # 2. Base Power Flow
+    # 2. Base Power Flow on the reinforced network
     pf_success, pf_results = run_powerflow(net)
     if not pf_success:
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details")}
 
     # 3. Optimal Power Flow
-    # Note: Using a fresh copy for OPF so it doesn't have the shunt fix
-    opf_net = load_case(case) 
+    # --- FIX IS HERE: Use a deepcopy of the *reinforced* network for a fair comparison ---
+    opf_net = deepcopy(net) 
     costs = {('gen', i): (i + 1) * 10 for i in opf_net.gen.index}
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
@@ -83,7 +82,6 @@ if run_button:
                 help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
             )
         
-        # Prevent division by zero if base losses are zero
         base_losses = pf_results['summary']['losses_mw']
         if base_losses > 0:
             loss_reduction = (base_losses - opf_results['summary']['losses_mw']) / base_losses * 100
@@ -116,4 +114,3 @@ if run_button:
             st.dataframe(analysis_data["contingency_df"])
 else:
     st.info("Select a grid model and click 'Run Analysis' to begin.")
-
