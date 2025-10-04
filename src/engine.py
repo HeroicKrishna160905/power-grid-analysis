@@ -1,23 +1,27 @@
-# src/engine.py (Final Version)
+# src/engine.py
+"""
+Core engine for loading cases and running AC power flow.
+"""
 import pandapower as pp
 import pandapower.networks as pn
 import pandas as pd
 
-def load_case(case_name: str = "case_ieee30"):
+def load_case(case_name: str = "case30"):
     """Loads a standard pandapower network case by name."""
     if not hasattr(pn, case_name):
         raise ValueError(f"Unknown case: {case_name}. Please use a valid pandapower.networks case.")
     return getattr(pn, case_name)()
 
-def run_powerflow(net):
+def run_powerflow(net, **kwargs):
     """
     Runs an AC power flow (pp.runpp) with safe error handling and result validation.
+    Accepts additional keyword arguments to pass to pp.runpp.
     """
     try:
-        # Use a more stable solver initialization and disable numba for broader compatibility.
-        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, init="dc", numba=False)
+        # Pass any extra arguments (like max_iteration) directly to pandapower
+        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, **kwargs)
         
-        # Basic validation summary
+        # Summarize violations
         v_min, v_max = 0.95, 1.05
         bus_v = net.res_bus['vm_pu']
         line_loading = net.res_line['loading_percent']
@@ -27,6 +31,9 @@ def run_powerflow(net):
             "overloaded_lines": int((line_loading > 100).sum())
         }
         
+        total_gen = net.res_gen.p_mw.sum() if not net.res_gen.empty else 0
+        total_loss = net.res_line.pl_mw.sum() if not net.res_line.empty else 0
+
         results = {
             "net": net,
             "bus_results": net.res_bus,
@@ -34,9 +41,9 @@ def run_powerflow(net):
             "violations": violations,
             "summary": {
                 "total_load_mw": net.load.p_mw.sum(),
-                "total_gen_mw": net.res_gen.p_mw.sum(),
-                "losses_mw": net.res_line.pl_mw.sum(),
-                "loss_percent": net.res_line.pl_mw.sum() / net.res_gen.p_mw.sum() * 100 if net.res_gen.p_mw.sum() != 0 else 0
+                "total_gen_mw": total_gen,
+                "losses_mw": total_loss,
+                "loss_percent": (total_loss / total_gen * 100) if total_gen > 0 else 0
             }
         }
         return True, results
