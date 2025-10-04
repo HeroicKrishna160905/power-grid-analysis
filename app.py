@@ -1,4 +1,4 @@
-# app.py (Final Version with Correct Comparison Logic)
+# app.py (Final Version with Correct Loss Minimization Logic)
 import streamlit as st
 import pandas as pd
 import pandapower as pp
@@ -34,9 +34,11 @@ def run_full_analysis(case):
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details")}
 
     # 3. Optimal Power Flow
-    # --- FIX IS HERE: Use a deepcopy of the *reinforced* network for a fair comparison ---
     opf_net = deepcopy(net) 
-    costs = {('gen', i): (i + 1) * 10 for i in opf_net.gen.index}
+    
+    # --- FIX IS HERE: Set all generator costs to 1 to force loss minimization ---
+    costs = {('gen', i): 1 for i in opf_net.gen.index}
+    
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
     if not opf_success:
@@ -114,3 +116,4 @@ if run_button:
             st.dataframe(analysis_data["contingency_df"])
 else:
     st.info("Select a grid model and click 'Run Analysis' to begin.")
+
