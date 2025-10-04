@@ -35,7 +35,8 @@ def run_full_analysis(case):
         net.shunt = pd.concat([net.shunt, new_shunt_data], ignore_index=True)
 
     # 2. Base Power Flow on the reinforced network
-    pf_success, pf_results = run_powerflow(net)
+    # Give the solver more iterations to find a solution.
+    pf_success, pf_results = run_powerflow(net, max_iteration=30)
     if not pf_success:
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details")}
 
@@ -63,7 +64,7 @@ if run_button:
 
     if "error" in analysis_data:
         st.error(analysis_data["error"])
-        if "details" in analysis_data and analysis_data["details"]:
+        if "details" in analysis_data and "details" in analysis_data and analysis_data["details"]:
             st.warning(f"Details: {analysis_data['details']}")
     else:
         st.success("Analysis Complete!")
@@ -84,7 +85,7 @@ if run_button:
             st.metric(
                 label="System Losses (OPF Case)", 
                 value=f"{opf_results['summary']['losses_mw']:.2f} MW",
-                help=f"{pf_results['summary']['loss_percent']:.2f}% of total generation"
+                help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
             )
         
         base_losses = pf_results['summary']['losses_mw']
