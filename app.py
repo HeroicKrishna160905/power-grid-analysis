@@ -26,14 +26,19 @@ def run_full_analysis(case):
     # --- Engineering Fix ---
     # Apply a refined fix only to the specific case that needs it.
     if case == "case30":
-        # The 20MVAr shunt was too aggressive, causing convergence issues.
-        # Reducing to 10MVAr provides support without creating overvoltage.
-        st.sidebar.info("Applying 10MVAr capacitor to Bus 29 for stability.")
-        pp.create_shunt(net, bus=29, q_mvar=10, name="Capacitor Bank at Bus 29")
+        # Adding a shunt proved to be unstable. Instead, we apply a small
+        # load reduction (shedding) at the sensitive Bus 29.
+        st.sidebar.info("Applying 10% load reduction at Bus 29 for stability.")
+        
+        # Find the index of the load at bus 29
+        load_idx = net.load[net.load.bus == 29].index
+        if not load_idx.empty:
+            # Reduce the active power load by 10%
+            net.load.loc[load_idx[0], 'p_mw'] *= 0.9
 
     # 2. Base Power Flow
-    # Give the robust 'gs' solver more iterations to solve this difficult case.
-    pf_success, pf_results = run_powerflow(net, max_iteration=100)
+    # With a more stable grid, we can return to the standard solver.
+    pf_success, pf_results = run_powerflow(net)
     if not pf_success:
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details", "No details")}
 
