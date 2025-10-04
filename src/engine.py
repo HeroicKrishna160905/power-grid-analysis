@@ -18,8 +18,9 @@ def run_powerflow(net, **kwargs):
     Accepts additional keyword arguments to pass to pp.runpp.
     """
     try:
-        # Pass any extra arguments (like max_iteration) directly to pandapower
-        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, **kwargs)
+        # Use a DC power flow for a robust initialization before the full AC power flow.
+        # This helps convergence on difficult-to-solve networks.
+        pp.runpp(net, enforce_q_lims=True, calculate_voltage_angles=True, init="dc", **kwargs)
         
         # Summarize violations
         v_min, v_max = 0.95, 1.05
