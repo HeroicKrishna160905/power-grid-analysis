@@ -32,8 +32,8 @@ def run_full_analysis(case):
         pp.create_shunt(net, bus=29, q_mvar=10, name="Capacitor Bank at Bus 29")
 
     # 2. Base Power Flow
-    # Increase iterations for more complex reinforced network
-    pf_success, pf_results = run_powerflow(net, max_iteration=30)
+    # Give the robust 'gs' solver more iterations to solve this difficult case.
+    pf_success, pf_results = run_powerflow(net, max_iteration=100)
     if not pf_success:
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details", "No details")}
 
@@ -115,5 +115,4 @@ if run_button:
             st.dataframe(analysis_data["contingency_df"])
 else:
     st.info("Select a grid model and click 'Run Analysis' to begin.")
-
 
