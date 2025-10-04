@@ -11,6 +11,7 @@ st.title("⚡ Power Grid Analysis Engine")
 
 # --- Sidebar Controls ---
 st.sidebar.header("Configuration")
+# Corrected names for pandapower library functions
 case_options = {"IEEE 30-Bus": "case30", "IEEE 118-Bus": "case118"}
 selected_case_name = st.sidebar.selectbox("Select Grid Model", options=list(case_options.keys()))
 case_name = case_options[selected_case_name]
@@ -20,34 +21,32 @@ run_button = st.sidebar.button("▶️ Run Analysis", type="primary")
 # --- Caching Functions ---
 @st.cache_data
 def run_full_analysis(case):
+    """
+    Loads the network, applies fixes, and runs all analyses.
+    """
     # 1. Load network
     net = load_case(case)
 
     # --- Engineering Fix ---
-    # Apply a refined fix only to the specific case that needs it.
+    # Apply a specific, stable fix only to the case that needs it.
     if case == "case30":
-        # Adding a shunt proved to be unstable. Instead, we apply a small
-        # load reduction (shedding) at the sensitive Bus 29.
         st.sidebar.info("Applying 10% load reduction at Bus 29 for stability.")
-        
-        # Find the index of the load at bus 29
+        # Find the index of the load connected to bus 29
         load_idx = net.load[net.load.bus == 29].index
         if not load_idx.empty:
             # Reduce the active power load by 10%
             net.load.loc[load_idx[0], 'p_mw'] *= 0.9
 
     # 2. Base Power Flow
-    # With a more stable grid, we can return to the standard solver.
     pf_success, pf_results = run_powerflow(net)
     if not pf_success:
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details", "No details")}
 
     # 3. Optimal Power Flow
-    # Use a deepcopy to ensure OPF runs on the same reinforced network
+    # Use a copy to ensure OPF runs on the same reinforced network
     opf_net = net.copy()
     
-    # Set costs for all types of generation to prioritize minimizing system losses.
-    # This is more robust and works for cases that may not have a 'gen' table.
+    # Robustly set costs for all types of generation to prioritize minimizing losses.
     costs = {}
     if hasattr(opf_net, 'gen') and not opf_net.gen.empty:
         for i in opf_net.gen.index:
@@ -62,7 +61,7 @@ def run_full_analysis(case):
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
     if not opf_success:
-        return {"error": "Optimal Power Flow Failed"}
+        return {"error": "Optimal Power Flow Failed", "details": opf_results.get("details", "No details")}
 
     # 4. Contingency Analysis
     contingency_df = run_n1_contingency_analysis(pf_results['net'])
@@ -99,7 +98,7 @@ if run_button:
             st.metric(
                 label="System Losses (OPF Case)", 
                 value=f"{opf_results['summary']['losses_mw']:.2f} MW",
-                help=f"{pf_results['summary']['loss_percent']:.2f}% of total generation"
+                help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
             )
         
         loss_reduction = 0
@@ -124,9 +123,10 @@ if run_button:
             
         with tab2:
             st.subheader("Generator Dispatch (MW)")
-            st.dataframe(opf_results["gen_dispatch"][['p_mw', 'q_mvar']])
+            # This is now robust and will display the consolidated dispatch table
+            st.dataframe(opf_results["gen_dispatch"])
             st.subheader("Line Loading after OPF (%)")
-            st.bar_chart(pf_results["line_results"], y="loading_percent")
+            st.bar_chart(opf_results["line_results"], y="loading_percent")
 
         with tab3:
             st.dataframe(analysis_data["contingency_df"])
