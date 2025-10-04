@@ -1,4 +1,4 @@
-# app.py (Final Version with Correct Loss Minimization Logic)
+# app.py (Final Version with Defensive Workaround for Cache Bug)
 import streamlit as st
 import pandas as pd
 import pandapower as pp
@@ -24,7 +24,13 @@ def run_full_analysis(case):
     # 1. Load network
     net = load_case(case)
     
-    # --- Engineering Fix ---
+    # --- DEFENSIVE WORKAROUND for stubborn Streamlit Cloud cache issue ---
+    # Manually create the missing table if it doesn't exist. This makes
+    # the code resilient to the buggy pandapower version on the server.
+    if not hasattr(net, "shunt_characteristic_table"):
+        net.shunt_characteristic_table = pd.DataFrame(columns=[])
+
+    # --- Engineering Fix (now safe to run) ---
     if case == "case30":
         pp.create_shunt(net, bus=29, q_mvar=20, name="Capacitor Bank at Bus 29")
 
@@ -35,16 +41,13 @@ def run_full_analysis(case):
 
     # 3. Optimal Power Flow
     opf_net = deepcopy(net) 
-    
-    # --- FIX IS HERE: Set all generator costs to 1 to force loss minimization ---
     costs = {('gen', i): 1 for i in opf_net.gen.index}
-    
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
     if not opf_success:
         return {"error": "Optimal Power Flow Failed"}
 
-    # 4. Contingency Analysis (run on the reinforced network)
+    # 4. Contingency Analysis
     contingency_df = run_n1_contingency_analysis(pf_results['net'])
 
     return {
