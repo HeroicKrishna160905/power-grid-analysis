@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import pandapower as pp
+from copy import deepcopy
 from src.engine import load_case, run_powerflow
 from src.opf import define_generator_costs, run_opf
 from src.contingency import run_n1_contingency_analysis
@@ -43,8 +44,8 @@ def run_full_analysis(case):
         return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details", "No details")}
 
     # 3. Optimal Power Flow
-    # Use a copy to ensure OPF runs on the same reinforced network
-    opf_net = net.copy()
+    # Use a deepcopy to ensure OPF runs on a complete and correct network object
+    opf_net = deepcopy(net)
     
     # Robustly set costs for all types of generation to prioritize minimizing losses.
     costs = {}
