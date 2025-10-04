@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 import pandapower as pp
-from copy import deepcopy
 from src.engine import load_case, run_powerflow
 from src.opf import define_generator_costs, run_opf
 from src.contingency import run_n1_contingency_analysis
@@ -23,25 +22,25 @@ run_button = st.sidebar.button("▶️ Run Analysis", type="primary")
 def run_full_analysis(case):
     # 1. Load network
     net = load_case(case)
-    
-    # --- Engineering Fix ---
-    if case == "case30":
-        # --- ROBUST WORKAROUND: Bypass the buggy pp.create_shunt() function ---
-        # Manually add a new row to the net.shunt DataFrame. This is a more
-        # direct method that is not affected by the server's environment bug.
-        new_shunt_data = pd.DataFrame([
-            {'bus': 29, 'q_mvar': 20, 'in_service': True, 'name': "Capacitor Bank at Bus 29"}
-        ])
-        net.shunt = pd.concat([net.shunt, new_shunt_data], ignore_index=True)
 
-    # 2. Base Power Flow on the reinforced network
-    # Give the solver more iterations to find a solution.
+    # --- Engineering Fix ---
+    # Apply a refined fix only to the specific case that needs it.
+    if case == "case30":
+        # The 20MVAr shunt was too aggressive, causing convergence issues.
+        # Reducing to 10MVAr provides support without creating overvoltage.
+        st.sidebar.info("Applying 10MVAr capacitor to Bus 29 for stability.")
+        pp.create_shunt(net, bus=29, q_mvar=10, name="Capacitor Bank at Bus 29")
+
+    # 2. Base Power Flow
+    # Increase iterations for more complex reinforced network
     pf_success, pf_results = run_powerflow(net, max_iteration=30)
     if not pf_success:
-        return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details")}
+        return {"error": "Base Power Flow Failed on the reinforced network.", "details": pf_results.get("details", "No details")}
 
     # 3. Optimal Power Flow
-    opf_net = deepcopy(net) 
+    # Use a deepcopy to ensure OPF runs on the same reinforced network
+    opf_net = net.copy()
+    # Set all generator costs to 1 to prioritize minimizing system losses
     costs = {('gen', i): 1 for i in opf_net.gen.index}
     opf_net = define_generator_costs(opf_net, costs)
     opf_success, opf_results = run_opf(opf_net)
@@ -63,9 +62,7 @@ if run_button:
         analysis_data = run_full_analysis(case_name)
 
     if "error" in analysis_data:
-        st.error(analysis_data["error"])
-        if "details" in analysis_data and "details" in analysis_data and analysis_data["details"]:
-            st.warning(f"Details: {analysis_data['details']}")
+        st.error(f"{analysis_data['error']}\nDetails: {analysis_data.get('details', 'N/A')}")
     else:
         st.success("Analysis Complete!")
         
@@ -88,17 +85,15 @@ if run_button:
                 help=f"{opf_results['summary']['loss_percent']:.2f}% of total generation"
             )
         
-        base_losses = pf_results['summary']['losses_mw']
-        if base_losses > 0:
-            loss_reduction = (base_losses - opf_results['summary']['losses_mw']) / base_losses * 100
-        else:
-            loss_reduction = 0
+        loss_reduction = 0
+        if pf_results['summary']['losses_mw'] > 0:
+            loss_reduction = (pf_results['summary']['losses_mw'] - opf_results['summary']['losses_mw']) / pf_results['summary']['losses_mw'] * 100
 
         with col3:
             st.metric(
                 label="Loss Reduction via OPF",
                 value=f"{loss_reduction:.2f} %",
-                delta=f"{loss_reduction:.2f}% Improvement", delta_color="normal"
+                delta=f"{loss_reduction:.2f}% Improvement"
             )
 
         # --- Display Results in Tabs ---
@@ -120,4 +115,5 @@ if run_button:
             st.dataframe(analysis_data["contingency_df"])
 else:
     st.info("Select a grid model and click 'Run Analysis' to begin.")
+
 
