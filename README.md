@@ -43,7 +43,7 @@ source .venv/bin/activate        # Linux / macOS
 # .venv\Scripts\activate         # Windows (PowerShell)
 
 pip install -r requirements.txt
-
+```
 
 ## Typical Workflow
 
