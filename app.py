@@ -1,4 +1,4 @@
-# app.py (Final Version with Direct DataFrame Manipulation)
+# app.py 
 import streamlit as st
 import pandas as pd
 import pandapower as pp
@@ -21,7 +21,7 @@ run_button = st.sidebar.button("▶️ Run Analysis", type="primary")
 @st.cache_data
 def run_full_analysis(case):
     net = load_case(case)
-    # No fixes are applied. We are ASSESSING the base case.
+
     
     pf_success, pf_results = run_powerflow(net)
     if not pf_success:
@@ -79,21 +79,21 @@ if run_button:
         tab1, tab2, tab3 = st.tabs(["📊 Base Power Flow", "📈 Optimal Power Flow", "🚨 N-1 Security Assessment"])
         
         with tab1:
-            # ... (code for tab1 is unchanged)
+            #
             st.subheader("Line Loading (%)")
             st.bar_chart(pf_results["line_results"], y="loading_percent")
             st.subheader("Bus Voltages (p.u.)")
             st.dataframe(pf_results["bus_results"][['vm_pu', 'va_degree']])
             
         with tab2:
-            # ... (code for tab2 is unchanged)
+            # 
             st.subheader("Generator Dispatch (MW)")
             st.dataframe(opf_results["gen_dispatch"])
             st.subheader("Line Loading after OPF (%)")
             st.bar_chart(opf_results["line_results"], y="loading_percent")
 
         with tab3:
-            # --- THIS IS THE CRUCIAL NEW PART ---
+            # 
             st.warning("### Assessment Finding: Grid is NOT N-1 Secure")
             st.write(
                 "The analysis shows that the base IEEE 30-Bus system is highly vulnerable. "
