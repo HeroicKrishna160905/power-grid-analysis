@@ -28,25 +28,27 @@ def run_full_analysis(case):
 
     # --- Engineering Fixes for IEEE 30-Bus ---
     if case == "case30":
-        st.sidebar.info("Applying engineering fixes for stability and redundancy.")
+        st.sidebar.info("Applying comprehensive reinforcement for N-1 security.")
         
         # Fix 1: Load Shedding for initial stability
         load_idx = net.load[net.load.bus == 29].index
         if not load_idx.empty:
-            net.load.loc[load_idx[0], 'p_mw'] *= 0.9
+            net.load.loc[load_idx[0], 'p_mw'] *= 0.95 # Reduced shedding slightly
 
-        # Fix 2: Add a new transmission line to relieve overloads
+        # Fix 2: Add a new high-capacity line for a new path
         pp.create_line_from_parameters(
-            net,
-            from_bus=1,
-            to_bus=5,
-            length_km=30,
-            r_ohm_per_km=0.1,
-            x_ohm_per_km=0.2,
-            c_nf_per_km=10,
-            max_i_ka=0.6,
-            name="New Redundant Line 1-5"
+            net, from_bus=1, to_bus=5, length_km=30, r_ohm_per_km=0.1,
+            x_ohm_per_km=0.2, c_nf_per_km=10, max_i_ka=0.8, name="New Line 1-5"
         )
+
+        # Fix 3: Strategic Upgrades (Reconductoring)
+        # We identify critical lines and double their capacity.
+        lines_to_upgrade = [0, 1, 2, 3, 4] # Corresponds to lines 1-2, 1-3, 2-4, 3-4, 2-5
+        for line_idx in lines_to_upgrade:
+            if line_idx in net.line.index:
+                net.line.loc[line_idx, 'max_i_ka'] *= 2.0
+                st.sidebar.write(f"- Upgraded capacity of existing Line {line_idx}")
+
 
     # 2. Base Power Flow
     pf_success, pf_results = run_powerflow(net)
@@ -95,7 +97,6 @@ if run_button:
         
         # --- Display KPIs ---
         st.header("Key Performance Indicators (KPIs)")
-        # ... (rest of the app is the same)
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric(
@@ -140,6 +141,4 @@ if run_button:
             st.dataframe(analysis_data["contingency_df"])
 else:
     st.info("Select a grid model and click 'Run Analysis' to begin.")
-
-
 
